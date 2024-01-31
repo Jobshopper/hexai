@@ -1,3 +1,4 @@
+import _ from "lodash";
 import {
     beforeEach,
     describe,
@@ -9,24 +10,32 @@ import {
 } from "vitest";
 import { MessageChannel } from "@hexai/messaging";
 import { Message } from "@hexai/core";
-import { DummyMessage, waitForMs } from "@hexai/core/test";
 import {
+    DummyMessage,
+    expectMessagesToEqual,
+    waitForMs,
+} from "@hexai/core/test";
+import {
+    EventStoreDBClient,
     PersistentSubscriptionDoesNotExistError,
     persistentSubscriptionToStreamSettingsFromDefaults,
 } from "@eventstore/db-client";
 
-import { esdbClient } from "@/test-fixtures";
+import { esdbClient, makeEsdbClient } from "@/test-fixtures";
 import { EsdbHelper } from "@/esdb-helper";
 import { EsdbInboundChannelAdapter } from "./esdb-inbound-channel-adapter";
 
 const STREAM = "test-stream-inbound";
 const GROUP = "test-group-inbound";
 
+type MessageChannelForTest = MessageChannel & {
+    messages: Message[];
+    clear: () => void;
+};
+
 describe("ESDBInboundChannelAdapter", () => {
     let defaultAdapter: EsdbInboundChannelAdapter;
-    let outputChannel: MessageChannel & {
-        messages: Message[];
-    };
+    let outputChannel: MessageChannelForTest;
 
     beforeEach(async () => {
         vi.resetAllMocks();
@@ -34,22 +43,44 @@ describe("ESDBInboundChannelAdapter", () => {
         await esdbClient.deleteStream(STREAM);
         await deleteConsumerGroup();
 
-        outputChannel = {
-            messages: [],
-            async send(message: Message): Promise<void> {
-                this.messages.push(message);
-            },
-        };
+        outputChannel = createOutputChannel();
 
         defaultAdapter = makeAdapter();
         defaultAdapter.setOutputChannel(outputChannel);
 
         return async () => {
+            outputChannel.clear();
             if (defaultAdapter.isRunning()) {
                 await defaultAdapter.stop();
             }
         };
     });
+
+    function expectMessagesToBeDelivered(
+        expected: Message[],
+        actual: Message[]
+    ) {
+        expectMessagesToEqual(expected, actual);
+    }
+
+    async function expectMessagesToBeDistributedInRoundRobin(
+        anotherOutputChannel: MessageChannelForTest
+    ) {
+        for (let i = 0; i < 5; i++) {
+            const events = DummyMessage.createMany(6);
+            await publishEvents(events);
+            await waitForMs(100);
+            expectMessagesToBeDelivered(
+                events,
+                _.zip(
+                    outputChannel.messages,
+                    anotherOutputChannel.messages
+                ).flat() as Message[]
+            );
+            outputChannel.clear();
+            anotherOutputChannel.clear();
+        }
+    }
 
     test("cannot start if no output channel is set", async () => {
         await expect(makeAdapter().start()).rejects.toThrow(
@@ -92,8 +123,14 @@ describe("ESDBInboundChannelAdapter", () => {
 
         await defaultAdapter.start();
 
+        await waitForMs(110);
+        expectMessagesToEqual(events, outputChannel.messages);
+        outputChannel.messages = [];
+
+        await publishEvents(DummyMessage.createMany(10));
         await waitForMs(100);
-        expect(events).toEqual(outputChannel.messages);
+
+        expectMessagesToBeDelivered(events, outputChannel.messages);
     });
 
     it("acks when message is sent to output channel successfully", async () => {
@@ -139,13 +176,40 @@ describe("ESDBInboundChannelAdapter", () => {
         const info = await getConsumerGroupInfo();
         expect(info.connections).toHaveLength(0);
     });
+
+    test("at most once delivery__ROUND ROBIN", async () => {
+        const anotherAdapter = makeAdapter(makeEsdbClient());
+        const anotherOutputChannel = createOutputChannel();
+        anotherAdapter.setOutputChannel(anotherOutputChannel);
+
+        await Promise.all([defaultAdapter.start(), anotherAdapter.start()]);
+
+        await expectMessagesToBeDistributedInRoundRobin(anotherOutputChannel);
+    });
 });
 
-function makeAdapter() {
-    return new EsdbInboundChannelAdapter(esdbClient, {
+function makeAdapter(client: EventStoreDBClient = esdbClient) {
+    const adapter = new EsdbInboundChannelAdapter({
         stream: STREAM,
         group: GROUP,
     });
+    adapter.setApplicationContext({
+        getEsdbClient: () => esdbClient,
+    });
+
+    return adapter;
+}
+
+function createOutputChannel(): MessageChannelForTest {
+    return {
+        messages: [],
+        async send(message: Message): Promise<void> {
+            this.messages.push(message);
+        },
+        clear() {
+            this.messages = [];
+        },
+    };
 }
 
 async function createConsumerGroup(): Promise<void> {

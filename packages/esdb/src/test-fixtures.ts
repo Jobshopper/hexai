@@ -42,4 +42,15 @@ export const esdbClient = new EventStoreDBClient(
     }
 );
 
+export function makeEsdbClient(): EventStoreDBClient {
+    return new EventStoreDBClient(
+        {
+            endpoint: "localhost:2113",
+        },
+        {
+            insecure: true,
+        }
+    );
+}
+
 EsdbHelper.bindMessageRegistry(messageRegistry);

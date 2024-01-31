@@ -9,7 +9,7 @@ import {
     ResolvedEvent,
 } from "@eventstore/db-client";
 import { AbstractInboundChannelAdapter } from "@hexai/messaging";
-import { Message } from "@hexai/core";
+import {ApplicationContextAware, Message} from "@hexai/core";
 
 import { EsdbHelper } from "@/esdb-helper";
 
@@ -21,7 +21,8 @@ export interface EsdbInboundChannelAdapterConfig {
     maxRetries?: number;
 }
 
-export class EsdbInboundChannelAdapter extends AbstractInboundChannelAdapter {
+export class EsdbInboundChannelAdapter extends AbstractInboundChannelAdapter implements ApplicationContextAware{
+    private client!: EventStoreDBClient;
     private subscription?: PersistentSubscriptionToStream;
     private session?: AsyncIterableIterator<any>;
     private interval?: NodeJS.Timeout;
@@ -34,7 +35,6 @@ export class EsdbInboundChannelAdapter extends AbstractInboundChannelAdapter {
     > = {};
 
     constructor(
-        private client: EventStoreDBClient,
         private config: EsdbInboundChannelAdapterConfig
     ) {
         super();
@@ -88,7 +88,7 @@ export class EsdbInboundChannelAdapter extends AbstractInboundChannelAdapter {
             );
 
         this.session = this.subscription[Symbol.asyncIterator]();
-        this.interval = setInterval(() => this.processMessage());
+        this.interval = setInterval(() => this.processMessage(), 10);
     }
 
     protected override async onStop(): Promise<void> {
@@ -134,5 +134,11 @@ export class EsdbInboundChannelAdapter extends AbstractInboundChannelAdapter {
         }
 
         delete this.callbacks[message.getMessageId()];
+    }
+
+    public setApplicationContext(context: {
+        getEsdbClient(): EventStoreDBClient;
+    }): void {
+        this.client = context.getEsdbClient();
     }
 }
