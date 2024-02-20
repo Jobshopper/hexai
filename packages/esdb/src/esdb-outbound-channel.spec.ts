@@ -20,6 +20,8 @@ describe("EsdbOutboundChannel", () => {
 
     it("appends received message to stream", async () => {
         const message = DummyMessage.create();
+        message.setHeader("correlationId", "test-correlation-id");
+        message.setHeader("causationId", "test-causation-id");
 
         await channel.send(message);
 

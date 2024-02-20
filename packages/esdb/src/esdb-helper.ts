@@ -32,8 +32,8 @@ export class EsdbHelper {
             type: headers.type,
             data: payload,
             metadata: {
-                causation: headers.causation,
-                correlation: headers.correlation,
+                causationId: headers.causationId,
+                correlationId: headers.correlationId,
                 createdAt: headers.createdAt,
                 schemaVersion: headers.schemaVersion,
                 returnAddress: headers.returnAddress,
