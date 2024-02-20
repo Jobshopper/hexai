@@ -89,7 +89,14 @@ export class PostgresOutboxInboundChannelAdapter
 
     public async onStop(): Promise<void> {
         if (await this.acquireLock()) {
-            await this.lock.release();
+            await this.releaseLock();
         }
+    }
+
+    private async releaseLock(): Promise<void> {
+        await this.uow.wrap(async (client) => {
+            this.lock.setClient(client);
+            await this.lock.release();
+        })
     }
 }

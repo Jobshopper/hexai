@@ -83,9 +83,8 @@ describe("PostgresOutboxInboundChannelAdapter", () => {
         channel: MessageChannel
     ): PostgresOutboxInboundChannelAdapter {
         const channelAdapter = new PostgresOutboxInboundChannelAdapter();
-        const client = createClient();
         channelAdapter.setApplicationContext({
-            getUnitOfWork: () => new PostgresUnitOfWork(() => client),
+            getUnitOfWork: () => new PostgresUnitOfWork(createClient, (client) => client.end()),
         });
         channelAdapter.setOutputChannel(channel);
         registeredAdapters.push(channelAdapter);
