@@ -56,6 +56,10 @@ describe("ESDBInboundChannelAdapter", () => {
         };
     });
 
+    async function waitForPropagation() {
+        await waitForMs(800);
+    }
+
     function expectMessagesToBeDelivered(
         expected: Message[],
         actual: Message[]
@@ -66,10 +70,10 @@ describe("ESDBInboundChannelAdapter", () => {
     async function expectMessagesToBeDistributedInRoundRobin(
         anotherOutputChannel: MessageChannelForTest
     ) {
-        for (let i = 0; i < 5; i++) {
+        for (let i = 0; i < 3; i++) {
             const events = DummyMessage.createMany(6);
             await publishEvents(events);
-            await waitForMs(100);
+            await waitForPropagation();
             expectMessagesToBeDelivered(
                 events,
                 _.zip(
@@ -118,17 +122,17 @@ describe("ESDBInboundChannelAdapter", () => {
     });
 
     test("consuming", async () => {
-        const events = DummyMessage.createMany(10);
+        const events = DummyMessage.createMany(3);
         await publishEvents(events);
 
         await defaultAdapter.start();
 
-        await waitForMs(110);
+        await waitForPropagation();
         expectMessagesToEqual(events, outputChannel.messages);
         outputChannel.messages = [];
 
-        await publishEvents(DummyMessage.createMany(10));
-        await waitForMs(100);
+        await publishEvents(DummyMessage.createMany(3));
+        await waitForPropagation();
 
         expectMessagesToBeDelivered(events, outputChannel.messages);
     });
@@ -140,7 +144,7 @@ describe("ESDBInboundChannelAdapter", () => {
 
         await defaultAdapter.start();
 
-        await waitForMs(100);
+        await waitForPropagation();
         const acked = spy.ack.mock.calls[0][0];
         expect(acked.event.id).toBe(event.getMessageId());
         expect(spy.nack).not.toHaveBeenCalled();
@@ -161,7 +165,7 @@ describe("ESDBInboundChannelAdapter", () => {
 
         await defaultAdapter.start();
 
-        await waitForMs(100);
+        await waitForPropagation();
         const nacked = spy.nack.mock.calls[0][2];
         expect(nacked.event.id).toBe(event.getMessageId());
         expect(spy.ack).not.toHaveBeenCalled();

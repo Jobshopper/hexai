@@ -88,7 +88,7 @@ export class EsdbInboundChannelAdapter extends AbstractInboundChannelAdapter imp
             );
 
         this.session = this.subscription[Symbol.asyncIterator]();
-        this.interval = setInterval(() => this.processMessage(), 10);
+        this.interval = setInterval(() => this.processMessage(), 250);
     }
 
     protected override async onStop(): Promise<void> {
