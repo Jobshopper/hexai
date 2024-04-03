@@ -7,7 +7,7 @@ import sqlite3 from "sqlite3";
 import { SqliteIdempotencySupport } from "@/test";
 import { IdempotencySupportHolder } from "@/types";
 import { MessageHandlerObject } from "./message-handler";
-import { IdempotencySupport } from "./idempotency-support";
+import { IdempotencySupport, IdempotencyViolationError } from "./idempotency-support";
 import { IdempotentReceiver } from "./idempotent-receiver";
 
 describe("IdempotentReceiver", () => {
@@ -69,10 +69,8 @@ describe("IdempotentReceiver", () => {
     it("does not delegate when message is duplicate", async () => {
         await idempotencySupport.markAsProcessed("key", message);
 
-        await receiver.handle(message);
-
-        expect(mockHandler.handle).not.toHaveBeenCalled();
-    });
+        await expect(receiver.handle(message)).rejects.toThrow(IdempotencyViolationError);
+    })
 
     it("delegates when message is not duplicate", async () => {
         (mockHandler.handle as Mock).mockReturnValueOnce("result");
@@ -99,19 +97,17 @@ describe("IdempotentReceiver", () => {
         ).resolves.toBe(false);
     });
 
-    it("rolls back transaction when marking fails", async () => {
-        (mockHandler.handle as Mock).mockImplementation(async () => {
-            await db.run("INSERT INTO test (value) VALUES (?)", ["value"]);
-        });
-        vi.spyOn(idempotencySupport, "markAsProcessed").mockRejectedValueOnce(
-            new Error("marking failed")
+    test("idempotency by pessimistic concurrency control", async () => {
+        const promises = Array.from({ length: 10 }, () =>
+            receiver.handle(message)
         );
 
-        await expect(receiver.handle(message)).rejects.toThrowError(
-            "marking failed"
-        );
-        await expect(
-            db.get("SELECT COUNT(*) as count FROM test")
-        ).resolves.toEqual({ count: 0 });
+        try {
+            await Promise.all(promises);
+        } catch (e) {
+            expect(e).toBeInstanceOf(IdempotencyViolationError)
+        }
+
+        expect(mockHandler.handle).toHaveBeenCalledTimes(1);
     });
 });

@@ -8,7 +8,7 @@ import {
 
 import { IdempotencySupportHolder } from "@/types";
 import { MessageHandler, MessageHandlerObject } from "./message-handler";
-import { IdempotencySupport } from "./idempotency-support";
+import { IdempotencySupport, IdempotencyViolationError } from "./idempotency-support";
 import { toHandlerFunction } from "./helpers";
 
 export class IdempotentReceiver<I extends Message, O = unknown>
@@ -31,19 +31,19 @@ export class IdempotentReceiver<I extends Message, O = unknown>
         if (!this.support) {
             throw new Error(
                 "idempotent receivers require idempotency support registered " +
-                    "in application context,\n" +
-                    "but idempotency support not provided"
+                "in application context,\n" +
+                "but idempotency support not provided"
             );
         }
 
-        if (await this.support.isDuplicate(this.key, message)) {
-            return;
+        try {
+            await this.support.markAsProcessed(this.key, message);
+        } catch (e) {
+            throw new IdempotencyViolationError();
         }
 
         this.injector.inject();
-        const result = await toHandlerFunction(this.delegate)(message);
-        await this.support.markAsProcessed(this.key, message);
-        return result;
+        return await toHandlerFunction(this.delegate)(message);
     }
 
     public setApplicationContext(
