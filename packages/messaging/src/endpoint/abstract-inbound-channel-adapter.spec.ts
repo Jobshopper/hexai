@@ -4,6 +4,7 @@ import { DummyMessage } from "@hexai/core/test";
 
 import { AbstractInboundChannelAdapter } from "./abstract-inbound-channel-adapter";
 import { MessageChannel } from "@/channel";
+import { IdempotencyViolationError } from "@/endpoint/idempotency-support";
 
 class InboundChannelAdapterForTest extends AbstractInboundChannelAdapter {
     private messages: Message[];
@@ -93,4 +94,17 @@ describe("AbstractInboundChannelAdapter", () => {
 
         expect(afterSend).toHaveBeenCalled();
     });
-});
+
+    test("afterSend is not called if the error is IdempotencyViolationError", async () => {
+        const error = new IdempotencyViolationError();
+        outputChannel.send = async () => {
+            throw error;
+        };
+        const afterSend = vi.spyOn(adapter as any, "afterSend");
+        await adapter.start();
+
+        await adapter.poll();
+
+        expect(afterSend).not.toHaveBeenCalled();
+    });
+})

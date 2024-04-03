@@ -119,7 +119,7 @@ export class EsdbInboundChannelAdapter extends AbstractInboundChannelAdapter imp
         this.callbacks[raw.event!.id] = {
             ack: () => this.subscription!.ack(raw),
             nack: (reason?: string) =>
-                this.subscription!.nack("park", reason ?? "", raw),
+                this.subscription!.nack("retry", reason ?? "", raw),
         };
     }
 

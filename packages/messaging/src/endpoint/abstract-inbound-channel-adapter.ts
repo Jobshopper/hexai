@@ -4,6 +4,7 @@ import { Message } from "@hexai/core";
 import { AbstractLifecycle } from "@/helpers";
 import { MessageChannel } from "@/channel";
 import { InboundChannelAdapter } from "./inbound-channel-adapter";
+import { IdempotencyViolationError } from "@/endpoint/idempotency-support";
 
 export abstract class AbstractInboundChannelAdapter
     extends AbstractLifecycle
@@ -44,11 +45,18 @@ export abstract class AbstractInboundChannelAdapter
             await this.outputChannel.send(message);
         } catch (e) {
             error = e as Error;
+            if (this.isIdempotencyViolated(error)) {
+                return false;
+            }
         }
 
         await this.afterSend(message, error);
 
         return !error;
+    }
+
+    protected isIdempotencyViolated(error: Error): boolean {
+        return error instanceof IdempotencyViolationError;
     }
 
     protected async beforeSend(message: Message): Promise<void> {}
